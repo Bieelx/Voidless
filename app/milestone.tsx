@@ -1,5 +1,12 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, Share, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Share,
+  ScrollView,
+} from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -13,17 +20,20 @@ import Animated, {
   withSequence,
   Easing,
 } from 'react-native-reanimated';
-import { MILESTONE_PHRASES } from '../utils/milestones';
-import { colors, spacing } from '../constants/theme';
+import { MILESTONE_INSIGHTS, MILESTONE_PHRASES } from '../utils/milestones';
+import { useTheme } from '../contexts/ThemeContext';
+import { useTrackerStore } from '../store/useTrackerStore';
+import { spacing } from '../constants/theme';
 
-// Radial glow: concentric circles fading out from center
-function RadialGlow() {
-  const scale = useSharedValue(0.6);
+// ── Radial spotlight ──────────────────────────────────────────────────────────
+
+function RadialGlow({ accentColor }: { accentColor: string }) {
+  const scale = useSharedValue(0.5);
   const opacity = useSharedValue(0);
 
   useEffect(() => {
-    opacity.value = withDelay(100, withTiming(1, { duration: 800, easing: Easing.out(Easing.ease) }));
-    scale.value = withDelay(100, withSpring(1, { damping: 20, stiffness: 60 }));
+    opacity.value = withDelay(100, withTiming(1, { duration: 900, easing: Easing.out(Easing.ease) }));
+    scale.value = withDelay(100, withSpring(1, { damping: 18, stiffness: 55 }));
   }, [scale, opacity]);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -31,205 +41,321 @@ function RadialGlow() {
     opacity: opacity.value,
   }));
 
+  const c = accentColor;
+
   return (
     <Animated.View style={[styles.glowRoot, animStyle]} pointerEvents="none">
-      <View style={styles.glowRing4} />
-      <View style={styles.glowRing3} />
-      <View style={styles.glowRing2} />
-      <View style={styles.glowRing1} />
-      <View style={styles.glowCore} />
+      {[
+        { size: 560, opacity: 0.018 },
+        { size: 400, opacity: 0.03  },
+        { size: 270, opacity: 0.045 },
+        { size: 160, opacity: 0.06  },
+        { size: 80,  opacity: 0.08  },
+      ].map(({ size, opacity: op }) => (
+        <View
+          key={size}
+          style={{
+            position: 'absolute',
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: c.startsWith('#')
+              ? hexToRgba(c, op)
+              : `rgba(200,184,245,${op})`,
+          }}
+        />
+      ))}
     </Animated.View>
   );
 }
 
+function hexToRgba(hex: string, a: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+
 export default function Milestone() {
   const insets = useSafeAreaInsets();
+  const colors = useTheme();
+  const language = useTrackerStore((s) => s.language);
   const { days: daysParam } = useLocalSearchParams<{ days: string }>();
   const days = parseInt(daysParam ?? '0', 10);
+
   const phrase = MILESTONE_PHRASES[days] ?? 'keep going.';
+  const insight = MILESTONE_INSIGHTS[days]?.[language];
+  const pt = language === 'pt';
 
-  // Pulsing glow on number
-  const numberGlow = useSharedValue(1);
+  // Hero number pulse
+  const pulse = useSharedValue(1);
   useEffect(() => {
-    const pulse = () => {
-      numberGlow.value = withSequence(
+    const run = () => {
+      pulse.value = withSequence(
         withTiming(1.04, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1.0, { duration: 1800, easing: Easing.inOut(Easing.ease) })
+        withTiming(1.0,  { duration: 1800, easing: Easing.inOut(Easing.ease) })
       );
-      setTimeout(pulse, 3600);
+      setTimeout(run, 3600);
     };
-    const timer = setTimeout(pulse, 1200);
-    return () => clearTimeout(timer);
-  }, [numberGlow]);
+    const t = setTimeout(run, 1200);
+    return () => clearTimeout(t);
+  }, [pulse]);
 
-  const numberPulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: numberGlow.value }],
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulse.value }],
   }));
 
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `${days} days free — via Voidless`,
+        message: pt
+          ? `${days} dias livre — via Voidless`
+          : `${days} days free — via Voidless`,
       });
-    } catch (_e) {
-      // silent
-    }
+    } catch (_) { /* silent */ }
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { backgroundColor: colors.bg.primary }]}>
+      <RadialGlow accentColor={colors.accent.primary} />
 
-      {/* Radial spotlight background */}
-      <RadialGlow />
-
-      {/* Center content */}
-      <View style={styles.center}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Tagline */}
+        {insight && (
+          <Animated.Text
+            entering={FadeIn.delay(100).duration(500)}
+            style={[styles.tagline, { color: colors.text.muted }]}
+          >
+            {insight.tagline}
+          </Animated.Text>
+        )}
 
         {/* Hero number */}
-        <Animated.View entering={FadeIn.delay(200).duration(600)} style={numberPulseStyle}>
-          <Text style={styles.number}>{days}</Text>
+        <Animated.View entering={FadeIn.delay(200).duration(600)} style={[styles.numberWrap, pulseStyle]}>
+          <Text style={[styles.number, {
+            color: colors.accent.primary,
+            shadowColor: colors.accent.primary,
+          }]}>
+            {days}
+          </Text>
         </Animated.View>
 
-        {/* Phrase */}
+        {/* Celebration phrase */}
         <Animated.Text
-          entering={FadeInUp.delay(500).duration(600).easing(Easing.out(Easing.ease))}
-          style={styles.phrase}
+          entering={FadeInUp.delay(450).duration(600)}
+          style={[styles.phrase, { color: colors.text.secondary }]}
         >
           {phrase.toUpperCase()}
         </Animated.Text>
-      </View>
 
-      {/* Actions */}
-      <Animated.View
-        style={[styles.actions, { paddingBottom: insets.bottom + spacing.lg }]}
-        entering={FadeInUp.delay(700).duration(500)}
-      >
-        <Pressable onPress={handleShare} style={({ pressed }) => [
-          styles.shareButton,
-          pressed && { opacity: 0.75 },
-        ]}>
-          <Text style={styles.shareIcon}>↑</Text>
-          <Text style={styles.shareText}>Share</Text>
-        </Pressable>
+        {/* ── Insight card ── */}
+        {insight && (
+          <Animated.View
+            entering={FadeInUp.delay(650).duration(700)}
+            style={[styles.insightCard, { backgroundColor: colors.bg.card, borderColor: colors.border }]}
+          >
+            {/* Main insight text */}
+            <Text style={[styles.insightBody, { color: colors.text.primary }]}>
+              {insight.insight}
+            </Text>
 
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.continueButton, pressed && { opacity: 0.6 }]}
+            {/* Body fact */}
+            <View style={[styles.factRow, { borderColor: colors.border }]}>
+              <Text style={[styles.factLabel, { color: colors.accent.primary }]}>
+                {pt ? 'o que acontece no seu corpo' : 'what\'s happening in your body'}
+              </Text>
+              <Text style={[styles.factText, { color: colors.text.secondary }]}>
+                {insight.bodyFact}
+              </Text>
+            </View>
+
+            {/* Next milestone teaser */}
+            {insight.nextTeaser && insight.nextDays !== null && (
+              <View style={[styles.teaserRow, { borderColor: colors.accent.secondary + '40' }]}>
+                <View style={styles.teaserLeft}>
+                  <Text style={[styles.teaserNext, { color: colors.text.muted }]}>
+                    {pt ? 'próximo marco' : 'next milestone'}
+                  </Text>
+                  <Text style={[styles.teaserDays, { color: colors.accent.primary }]}>
+                    {insight.nextDays} {pt ? 'dias' : 'days'}
+                  </Text>
+                </View>
+                <Text style={[styles.teaserText, { color: colors.text.secondary }]}>
+                  {insight.nextTeaser}
+                </Text>
+              </View>
+            )}
+          </Animated.View>
+        )}
+
+        {/* Actions */}
+        <Animated.View
+          style={styles.actions}
+          entering={FadeInUp.delay(900).duration(500)}
         >
-          <Text style={styles.continueText}>continue</Text>
-        </Pressable>
-      </Animated.View>
+          <Pressable
+            onPress={handleShare}
+            style={({ pressed }) => [
+              styles.shareBtn,
+              { backgroundColor: colors.bg.card, borderColor: colors.border },
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={[styles.shareIcon, { color: colors.text.secondary }]}>↑</Text>
+            <Text style={[styles.shareText, { color: colors.text.primary }]}>
+              {pt ? 'compartilhar' : 'share'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.continueBtn, pressed && { opacity: 0.5 }]}
+          >
+            <Text style={[styles.continueText, { color: colors.text.muted }]}>
+              {pt ? 'continuar' : 'continue'}
+            </Text>
+          </Pressable>
+        </Animated.View>
+      </ScrollView>
     </View>
   );
 }
 
-const GLOW_COLOR = 'rgba(200, 184, 245,';
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg.primary,
-  },
-  // Glow layers — concentric circles, absolute center
+  container: { flex: 1 },
+
   glowRoot: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  glowRing4: {
-    position: 'absolute',
-    width: 520,
-    height: 520,
-    borderRadius: 260,
-    backgroundColor: `${GLOW_COLOR} 0.025)`,
-  },
-  glowRing3: {
-    position: 'absolute',
-    width: 380,
-    height: 380,
-    borderRadius: 190,
-    backgroundColor: `${GLOW_COLOR} 0.04)`,
-  },
-  glowRing2: {
-    position: 'absolute',
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: `${GLOW_COLOR} 0.055)`,
-  },
-  glowRing1: {
-    position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: `${GLOW_COLOR} 0.07)`,
-  },
-  glowCore: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: `${GLOW_COLOR} 0.09)`,
-  },
-  center: {
-    flex: 1,
+
+  scroll: {
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 20,
+    paddingHorizontal: spacing.lg,
   },
+
+  tagline: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 4,
+    marginBottom: 16,
+  },
+
+  numberWrap: { marginBottom: 8 },
   number: {
     fontSize: 120,
-    fontWeight: '200' as const,
+    fontWeight: '200',
     letterSpacing: -6,
-    color: colors.accent.primary,
     lineHeight: 124,
     includeFontPadding: false,
-    // iOS glow via shadow
-    shadowColor: colors.accent.primary,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
+    shadowOpacity: 0.55,
     shadowRadius: 40,
   },
+
   phrase: {
     fontSize: 11,
-    fontWeight: '500' as const,
+    fontWeight: '500',
     letterSpacing: 3,
-    color: colors.text.secondary,
     textAlign: 'center',
-    paddingHorizontal: spacing.xxl,
+    marginBottom: 32,
+    paddingHorizontal: spacing.lg,
   },
-  actions: {
-    paddingHorizontal: spacing.xl,
-    gap: 12,
+
+  // ── Insight card ──
+  insightCard: {
+    width: '100%',
+    borderRadius: 20,
+    borderWidth: 0.5,
+    padding: 20,
+    marginBottom: 28,
+    gap: 0,
   },
-  shareButton: {
+
+  insightBody: {
+    fontSize: 15,
+    fontWeight: '300',
+    lineHeight: 24,
+    marginBottom: 20,
+  },
+
+  factRow: {
+    borderTopWidth: 0.5,
+    paddingTop: 16,
+    marginBottom: 16,
+    gap: 6,
+  },
+  factLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  factText: {
+    fontSize: 13,
+    fontWeight: '300',
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+
+  teaserRow: {
+    borderTopWidth: 0.5,
+    paddingTop: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  teaserLeft: { alignItems: 'center', minWidth: 52 },
+  teaserNext: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  teaserDays: {
+    fontSize: 22,
+    fontWeight: '200',
+    letterSpacing: -0.5,
+    lineHeight: 24,
+  },
+  teaserText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '300',
+    lineHeight: 20,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+
+  // ── Actions ──
+  actions: { width: '100%', gap: 12 },
+  shareBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.bg.card,
     borderRadius: 14,
     paddingVertical: 16,
     borderWidth: 0.5,
-    borderColor: colors.border,
   },
-  shareIcon: {
-    fontSize: 16,
-    color: colors.text.secondary,
-  },
-  shareText: {
-    fontSize: 15,
-    fontWeight: '400' as const,
-    color: colors.text.primary,
-  },
-  continueButton: {
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  continueText: {
-    fontSize: 14,
-    color: colors.text.muted,
-    letterSpacing: 1,
-  },
+  shareIcon: { fontSize: 16 },
+  shareText: { fontSize: 15, fontWeight: '400' },
+  continueBtn: { paddingVertical: 14, alignItems: 'center' },
+  continueText: { fontSize: 14, letterSpacing: 1 },
 });
